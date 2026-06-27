@@ -1,0 +1,142 @@
+export const metadata = {
+  title: "The N+1 Problem in Prisma: How I Fixed a Slow API with a Single Line",
+  description:
+    "Understand how the N+1 query problem appears in Prisma ORM, why it silently kills database performance, and how to fix it with include and batched queries. A practical guide for Node.js developers.",
+  author: "Noor-ul-Hassan",
+  date: "2026-05-10",
+  tags: ["Prisma", "Database", "Performance", "Node.js", "WebDev", "Backend"],
+};
+
+# The N+1 Problem in Prisma: How I Fixed a Slow API with a Single Line
+
+A few months ago, a small internal dashboard I had built started taking over four seconds to load. The page was simple — it listed recent projects and the person who owned each one. With a handful of test records it had been instantaneous, but now with thirty real teams and a growing project list, the endpoint was crawling. The profiler showed nothing alarming on the CPU side; the database was barely doing any work. Yet the response times kept growing.
+
+The culprit was an N+1 query loop I had written myself without a second thought. I fixed it by adding one `include` in Prisma, and the response time collapsed from 1.8 seconds to 48 milliseconds. Here’s how I dug into the problem, what I learned about Prisma’s relation loading, and the patterns I now use to avoid shipping another N+1 bottleneck.
+
+## What is the N+1 problem, precisely?
+
+You write one query that returns N records. Then, inside your application code, you iterate over those N records and run an additional query *for each one*. That’s 1 query for the list, plus N queries for the related data. In a small dataset the overhead is invisible. As your data grows, the number of database round trips grows linearly, and you pay a huge latency tax without any increase in real work.
+
+The name “N+1” is often associated with lazy-loading ORMs that fetch relations on access, but Prisma doesn’t do lazy loading. Instead, the problem creeps in when you manually fetch related data in a loop because you forget or don’t realize that Prisma can grab everything in one go.
+
+## The specific mistake I made
+
+We had a `Project` model and a `User` model connected by a foreign key `ownerId`. The goal was to return the 25 most recently updated projects and display the owner’s name and email alongside each one. Here’s the exact code I shipped:
+
+```ts
+const projects = await prisma.project.findMany({
+  take: 25,
+  orderBy: { updatedAt: 'desc' },
+});
+
+const result = [];
+
+for (const project of projects) {
+  const owner = await prisma.user.findUnique({
+    where: { id: project.ownerId },
+    select: { name: true, email: true },
+  });
+
+  result.push({
+    title: project.title,
+    ownerName: owner.name,
+    ownerEmail: owner.email,
+  });
+}
+```
+
+For a dataset with 25 projects, this fires **26 database queries**: 1 to fetch the projects, and 25 individual `findUnique` calls. Each round trip has its own network overhead, even if the query itself takes a fraction of a millisecond. When you add connection pool overhead and serial execution inside the `for` loop, the endpoint becomes a slow waiting game.
+
+I ran a quick load test against that endpoint locally with 25 projects and measured an average response time of about 1800 ms. With `include` — the fix I’ll show next — average latency dropped to under 50 ms. The database server was doing roughly the same work; the difference was the absence of 25 unnecessary round trips.
+
+## The fix: let Prisma handle the relation
+
+Instead of looping, you tell Prisma to fetch the related user in the same query using `include`:
+
+```ts
+const projects = await prisma.project.findMany({
+  take: 25,
+  orderBy: { updatedAt: 'desc' },
+  include: {
+    owner: {
+      select: { name: true, email: true },
+    },
+  },
+});
+
+// Now projects[i].owner.name is available directly.
+// Zero extra queries, zero loops.
+```
+
+Under the hood, Prisma translates this into a SQL LEFT JOIN that returns a single result set. The database does the heavy lifting once, and your Node.js process receives the full tree without additional chatter.
+
+This isn’t a deep optimization — it’s the default way Prisma is designed to be used for fetching relations. I had just overlooked it during initial development because the code felt “safe enough” with manual fetches.
+
+## When a single include isn’t enough
+
+For most one-to-many or one-to-one relations, `include` eliminates N+1 entirely. But there are situations where a naive `include` over a deeply nested tree can still produce poor performance — though not because of N+1 in the classic sense. For example, fetching posts along with their comments and the comment authors might generate a large join result set that duplicates data. In these cases, splitting queries into a few batched fetches can be more efficient.
+
+One pattern I rely on: for a parent with many children (e.g., a team and its hundreds of members), first fetch the parent. Then use a single `findMany` with a `where` clause that matches the parent IDs, and group the results in JavaScript:
+
+```ts
+const teams = await prisma.team.findMany({ where: { active: true } });
+const teamIds = teams.map((t) => t.id);
+
+const members = await prisma.member.findMany({
+  where: { teamId: { in: teamIds } },
+});
+
+const membersByTeam = members.reduce((acc, member) => {
+  (acc[member.teamId] ??= []).push(member);
+  return acc;
+}, {});
+
+const fullTeams = teams.map((team) => ({
+  ...team,
+  members: membersByTeam[team.id] ?? [],
+}));
+```
+
+This uses **two queries total**, regardless of how many teams you have. It’s a deliberate trade-off: you sacrifice a bit of application code in exchange for keeping the database query count constant.
+
+## Another trap: N+1 in nested loops
+
+Sometimes the N+1 isn’t obvious because the loop is hidden behind utility functions. For instance:
+
+```ts
+async function fetchOwnerName(projectId) {
+  const owner = await prisma.user.findUnique({
+    where: { id: projectId },
+    select: { name: true },
+  });
+  return owner.name;
+}
+
+const projectNames = await Promise.all(
+  projects.map((p) => fetchOwnerName(p.id))
+);
+```
+
+`Promise.all` parallelizes the requests, so it’s faster than a serial loop, but it’s still N queries hammering the database at once. The correct approach is the same: use `include` or a batched `findMany`.
+
+## Spotting N+1 before it hits production
+
+Enable query logging:
+
+```ts
+const prisma = new PrismaClient({
+  log: ['query'],
+});
+```
+
+If you see repeated similar queries during a single request, that’s usually your first warning sign.
+
+---
+
+## Wrapping up
+
+The N+1 problem in Prisma is easy to write, easy to miss, and painfully easy to fix once you know what you're looking for. The core idea is simple: never run a database query inside a loop that iterates over results from a previous database query. Instead, let Prisma fetch relational data in the same pass with `include`, or use a batched `findMany` when you need to keep queries independent.
+
+I've turned this into a personal rule. If I see `await prisma` inside a loop during a code review, I stop and ask whether the relation can be lifted to the query level. Almost always, the answer is yes. The resulting code is shorter, the performance is dramatically better, and the database gets to do what databases are built for — returning sets of data efficiently.
+
+That dashboard I mentioned at the beginning now loads in under 50 milliseconds. No infrastructure change, no caching layer, no complex refactor. Just one `include` where a loop used to be. Those are the wins worth chasing.

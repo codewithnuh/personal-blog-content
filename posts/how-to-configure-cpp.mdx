@@ -1,0 +1,171 @@
+export const metadata = {
+  title: "Setting Up VS Code for C++ Programming",
+  description:
+    "Step-by-step guide to set up Visual Studio Code for C++, including compiler installation, running code in terminal, and recommended extensions.",
+  author: "Noor-ul-Hassan",
+  date: "2026-01-24",
+  tags: ["C++", "VS Code", "Setup", "Beginners", "Programming"],
+};
+
+# Setting Up VS Code for C++ Programming
+
+Before we can start writing C++ programs, we need a **place to write code** and a **tool to run it**.  
+Think of it like cooking: you need a **kitchen (editor)** and **ingredients plus utensils (compiler)** to cook a meal (your program).
+
+In this guide, we will use **Visual Studio Code (VS Code)** as our editor. It’s free, easy to use, and works on Windows, Mac, and Linux.
+
+---
+
+## Step 1: Install VS Code
+
+1. Go to the [VS Code website](https://code.visualstudio.com/)
+2. Download the installer for your operating system.
+3. Run the installer and follow the instructions.
+4. Open VS Code after installation.
+
+> VS Code is like your workspace. You write code here, but it **cannot run C++ programs by itself**—we need a compiler too.
+
+---
+
+## Step 2: Install a C++ Compiler
+
+A **compiler** is like the chef who can read your recipe (code) and turn it into a meal (program).
+
+### For Windows:
+
+1. Install **MinGW**:
+   - Go to [MinGW-w64 website](https://sourceforge.net/projects/mingw/)
+   - Download the installer.
+   - During installation, choose the latest version, `x86_64` architecture, and set the installation path (e.g., `C:\mingw-w64`).
+2. Add MinGW to your **system PATH**:
+   - Search for “Environment Variables” → Edit system environment variables → Environment Variables → Path → Add new → paste `C:\mingw-w64\bin`
+
+### For Mac:
+
+1. Open Terminal and install **Xcode Command Line Tools**:
+
+```bash
+xcode-select --install
+```
+
+### For Linux:
+
+1. Open Terminal and install **g++**:
+
+```bash
+sudo apt update
+sudo apt install g++
+```
+
+> Once installed, the compiler can turn your C++ code into programs your computer can run.
+
+---
+
+## Step 3: Check Compiler Installation
+
+Open a terminal and type:
+
+```bash
+g++ --version
+```
+
+If you see a version number, congratulations! Your compiler is ready.
+
+---
+
+## Step 4: Install VS Code Extensions
+
+Extensions make coding easier. For C++, we need:
+
+1. **C/C++ by Microsoft** – adds IntelliSense, debugging, and more.
+   - Open VS Code → Extensions (left sidebar) → Search for `C/C++` → Install
+
+2. **Code Runner** (optional) – lets you run code with one click.
+   - Search for `Code Runner` → Install
+
+> Think of extensions as extra kitchen tools that make cooking faster and easier.
+
+---
+
+## Step 5: Running C++ Code in VS Code
+
+### Option 1: Using Terminal (Recommended)
+
+1. Open VS Code → create a new file → save it as `program.cpp`.
+2. Write your code:
+
+```cpp
+#include <iostream>
+using namespace std;
+
+int main() {
+    cout << "Hello from VS Code!" << endl;
+    return 0;
+}
+```
+
+3. Open the terminal in VS Code (`Ctrl + ~` or `View → Terminal`).
+4. Compile your program:
+
+```bash
+g++ program.cpp -o program
+```
+
+> This tells the compiler: “Take `program.cpp` and make an executable called `program`.”
+
+5. Run your program:
+
+- **Windows:**
+
+```bash
+program.exe
+```
+
+- **Mac/Linux:**
+
+```bash
+./program
+```
+
+You should see:
+
+```
+Hello from VS Code!
+```
+
+---
+
+### Option 2: Using Code Runner Extension (Simpler)
+
+1. Open `program.cpp`
+2. Click the **Run Code** button on top right (green triangle)
+3. The output appears in the **Output tab**
+
+> Quick and easy, but learning the terminal method is **more powerful** for real projects.
+
+---
+
+## Step 6: Tips for Beginners
+
+- Always save your file with `.cpp` extension.
+- Name your files meaningful names, e.g., `hello.cpp`, `calculator.cpp`.
+- Use the terminal to **compile and run programs**—this builds a strong foundation.
+- Experiment with small programs to get comfortable.
+
+---
+
+## Exercise
+
+1. Write a program that prints your name and age.
+2. Try running it in the terminal using the steps above.
+3. Experiment with changing the text and see what happens.
+
+> Once you can write and run programs, you are ready to move to **variables, data types, and more C++ concepts**!
+
+---
+
+This is **easy, step-by-step, beginner-friendly**, with terminal commands, analogies, and exercises.
+
+If you want, I can now **write the next blog on “Variables and Data Types in C++”** in the same style for MDX.
+
+Do you want me to do that next?

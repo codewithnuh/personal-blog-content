@@ -1,0 +1,349 @@
+export const metadata = {
+  title:
+    "How to Prevent Users from Overwriting Each Other's Data: Optimistic Locking in Next.js & Prisma",
+  description:
+    "Learn how optimistic locking prevents race conditions in Next.js applications. Discover how a simple version column can stop concurrent updates from silently overwriting business-critical data.",
+  author: "Noor-ul-Hassan",
+  date: "2026-06-25",
+  tags: [
+    "Next.js",
+    "Prisma",
+    "Databases",
+    "Concurrency",
+    "Optimistic Locking",
+    "Backend",
+    "WebDev",
+  ],
+};
+
+Imagine you're building a collaborative business dashboard. Two project managers are reviewing the same contract at the exact same time. The contract currently has a budget of **$4,000**.
+
+Manager A updates the budget to **$5,000**.
+
+Manager B updates the budget to **$7,000**.
+
+Both click **Save** almost simultaneously.
+
+In many CRUD applications, whichever request arrives last wins. If Manager B's request reaches the database a fraction of a second after Manager A's, the database blindly overwrites Manager A's changes. No warning. No error. No indication that data was lost.
+
+This problem is called a **race condition**, and it's one of the easiest ways for multi-user systems to corrupt important business data.
+
+I ran into this problem while designing a contract management workflow and realized that solving it isn't about writing smarter frontend code. The real solution lives where the data lives: the database.
+
+Here's how optimistic locking works, why stateless servers can't solve this problem on their own, and how a single `version` column can protect your application from silent overwrites.
+
+## Understanding the Problem
+
+Before discussing the fix, it's important to understand why this happens.
+
+Modern Next.js applications often use Server Actions, Route Handlers, or API routes. These are **stateless**.
+
+A stateless server treats every request as completely independent. When a user clicks Save, the server doesn't know:
+
+- Who else is editing the record
+- Whether another request arrived milliseconds earlier
+- What version of the data the user originally saw
+
+The server simply receives a request and executes it.
+
+This creates a race.
+
+Suppose both users loaded the contract when it looked like this:
+
+- **Budget:** $4,000
+- **Version:** 1
+
+Both users believe they're editing the latest version.
+
+When they save, two independent requests race toward the database.
+
+Without additional safeguards, whichever request finishes last overwrites the first one.
+
+## The Traditional Update Problem
+
+Most applications initially implement updates like this:
+
+```ts
+await db.contract.update({
+  where: {
+    id: contractId,
+  },
+  data: {
+    budget: newBudget,
+  },
+});
+```
+
+The database only checks whether the row exists.
+
+It never asks:
+
+- Is this data still current?
+- Has another user modified it?
+- Is this update based on stale information?
+
+As long as the record exists, the update succeeds.
+
+That simplicity becomes dangerous in collaborative systems.
+
+## The Solution: Optimistic Locking
+
+Optimistic locking assumes conflicts are uncommon.
+
+Instead of locking rows and forcing users to wait, we allow everyone to read freely and only verify consistency when they attempt to write.
+
+The technique relies on a simple concept:
+
+Every record stores a version number.
+
+```prisma
+model Contract {
+  id           String   @id @default(uuid())
+  contractName String
+  budget       Int
+  version      Int      @default(1)
+  updatedAt    DateTime @updatedAt
+}
+```
+
+Every successful update increments the version.
+
+The version evolves like this:
+
+`Version 1 → Version 2 → Version 3 → Version 4 → ...`
+
+Whenever a user loads a record, they receive both the data and the current version number.
+
+Later, when they submit changes, they must provide the version they originally saw.
+
+## Implementing Optimistic Locking in Next.js
+
+The first step is fetching the contract and its version.
+
+```ts
+export async function getContract(id: string) {
+  const contract = await db.contract.findUnique({
+    where: { id },
+  });
+
+  return contract;
+}
+```
+
+The frontend now stores both the contract data and the version number.
+
+```ts
+{
+  budget: 4000,
+  version: 1,
+}
+```
+
+When the user saves changes, that version travels back to the server.
+
+```ts
+interface UpdateBudgetInput {
+  contractId: string;
+  newBudget: number;
+  expectedVersion: number;
+}
+```
+
+Now comes the important part.
+
+Instead of updating by `id` alone, we update by both `id` and `version`.
+
+```ts
+const updateResult = await db.contract.updateMany({
+  where: {
+    id: contractId,
+    version: expectedVersion,
+  },
+  data: {
+    budget: newBudget,
+    version: {
+      increment: 1,
+    },
+  },
+});
+```
+
+This query tells the database:
+
+> Update the contract only if its version still matches the version the user originally loaded.
+
+If another user already updated the record, the versions no longer match.
+
+The update affects zero rows.
+
+```ts
+if (updateResult.count === 0) {
+  return {
+    success: false,
+    error: "VERSION_MISMATCH",
+  };
+}
+```
+
+And that's how the conflict is detected.
+
+## Walking Through the Race Condition
+
+Let's replay the original scenario.
+
+### Step 1: Both Users Load the Page
+
+The database returns:
+
+- **Budget:** $4,000
+- **Version:** 1
+
+Manager A stores `expectedVersion = 1`.
+
+Manager B stores `expectedVersion = 1`.
+
+### Step 2: Both Click Save
+
+The requests begin racing toward the database.
+
+### Step 3: Manager A Arrives First
+
+The database executes:
+
+```ts
+where: {
+  id: contractId,
+  version: 1,
+}
+```
+
+A matching row exists.
+
+The update succeeds.
+
+The contract now contains:
+
+- **Budget:** $5,000
+- **Version:** 2
+
+The database returns:
+
+```ts
+{
+  count: 1;
+}
+```
+
+Manager A sees a success message.
+
+### Step 4: Manager B Arrives
+
+The database executes:
+
+```ts
+where: {
+  id: contractId,
+  version: 1,
+}
+```
+
+But the record now has **Version 2**.
+
+No row matches the condition.
+
+The update affects zero records.
+
+```ts
+{
+  count: 0;
+}
+```
+
+The server immediately knows a conflict occurred.
+
+Instead of overwriting Manager A's work, it returns:
+
+```ts
+{
+  success: false,
+  error: "VERSION_MISMATCH",
+}
+```
+
+Manager B can refresh the page, review the latest changes, and decide how to proceed.
+
+Most importantly, no data was lost.
+
+## Why Use `updateMany()` Instead of `update()`?
+
+This implementation often surprises developers.
+
+After all, we're updating a single row.
+
+Why use `updateMany()`?
+
+The answer is that `update()` is designed around unique lookups.
+
+Optimistic locking requires checking two conditions simultaneously:
+
+```ts
+{
+  id: contractId,
+  version: expectedVersion,
+}
+```
+
+`updateMany()` allows arbitrary filtering and returns a `count` value indicating how many records were modified.
+
+That count becomes our conflict detector.
+
+```ts
+if (updateResult.count === 0) {
+  // Version mismatch detected
+}
+```
+
+Without that count, determining whether the update actually occurred becomes much harder.
+
+## Why Optimistic Locking Scales Well
+
+Some systems use pessimistic locking instead.
+
+A pessimistic lock effectively says:
+
+> Someone is editing this record. Nobody else may modify it until they're finished.
+
+This guarantees consistency but creates bottlenecks and reduces concurrency.
+
+Optimistic locking takes the opposite approach.
+
+Everyone can read.
+
+Everyone can edit.
+
+The database only checks for conflicts when a write occurs.
+
+Because conflicts are typically rare, this approach scales extremely well while still protecting data integrity.
+
+That's why you'll find optimistic concurrency control in many SaaS products, enterprise applications, and collaborative platforms.
+
+## Wrapping Up
+
+Race conditions aren't caused by bad databases or slow servers. They're a natural consequence of multiple users interacting with shared data simultaneously.
+
+Because Next.js backends are stateless, the server cannot reliably determine who edited a record first. The database must become the source of truth.
+
+By introducing a simple `version` column and validating it during updates, we transform a vulnerable CRUD application into a concurrency-aware system that actively protects business-critical data.
+
+The implementation is surprisingly small:
+
+- Add a version column.
+- Send the version to the client.
+- Verify the version during updates.
+- Increment the version after successful writes.
+
+That's it.
+
+One integer column is often enough to prevent one of the most expensive classes of bugs in multi-user software: silent data overwrites.
+
+Thanks for reading! Hope you enjoyed this post. If you have any questions or comments, feel free to reach out to me on [LinkedIn](https://www.linkedin.com/in/codewithnuh/) or [X](https://x.com/codewithnuh).
