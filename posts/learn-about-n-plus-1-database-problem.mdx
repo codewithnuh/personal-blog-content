@@ -1,13 +1,18 @@
-export const metadata = {
-  title: "The N+1 Problem in Prisma: How I Fixed a Slow API with a Single Line",
-  description:
-    "Understand how the N+1 query problem appears in Prisma ORM, why it silently kills database performance, and how to fix it with include and batched queries. A practical guide for Node.js developers.",
-  author: "Noor-ul-Hassan",
-  date: "2026-05-10",
-  tags: ["Prisma", "Database", "Performance", "Node.js", "WebDev", "Backend"],
-};
+---
+  title: "The N+1 Problem in Prisma: How I Fixed a Slow API with a Single Line"
+  description: "Understand how the N+1 query problem appears in Prisma ORM, why it silently kills database performance, and how to fix it with include and batched queries. A practical guide for Node.js developers."
+  author: "Noor-ul-Hassan"
+  date: "2026-05-10"
+  tags:
+    - Prisma
+    - Database 
+    - Performance
+    - Node.js
+    - WebDev
+    - Backend
+---
 
-# The N+1 Problem in Prisma: How I Fixed a Slow API with a Single Line
+
 
 A few months ago, a small internal dashboard I had built started taking over four seconds to load. The page was simple — it listed recent projects and the person who owned each one. With a handful of test records it had been instantaneous, but now with thirty real teams and a growing project list, the endpoint was crawling. The profiler showed nothing alarming on the CPU side; the database was barely doing any work. Yet the response times kept growing.
 
