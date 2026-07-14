@@ -1,0 +1,832 @@
+---
+title: "Build a Dynamic Array in C from Scratch: Understanding Memory, Pointers, and Data Structures"
+description: "Learn how dynamic arrays work internally by implementing one from scratch in C. We'll cover pointers, malloc, structs, static vs dynamic arrays, and memory management step by step."
+author: "Noor-ul-Hassan"
+date: "2026-07-14"
+tags:
+  - C
+  - Data Structures
+  - Dynamic Array
+  - Memory Management
+  - Pointers
+  - malloc
+---
+
+# Build a Dynamic Array in C from Scratch
+
+If you've only programmed in JavaScript, Python, Java, or C++, you've probably used arrays without ever thinking about how they actually work.
+
+Methods like `push()`, `pop()`, `insert()`, or `remove()` feel like magic.
+
+But they aren't.
+
+Someone had to implement them.
+
+In this blog, we'll build our own **dynamic array** from scratch in C. Along the way you'll understand memory allocation, pointers, structs, and why dynamic arrays are one of the most important data structures in computer science.
+
+---
+
+## What You'll Learn
+
+By the end of this article you'll understand:
+
+- [What an array is](#what-is-an-array)
+- [Why arrays are needed](#why-do-we-need-arrays)
+- [The difference between static and dynamic arrays](#static-arrays)
+- [Why C is the best language to learn data structures](#why-learn-this-in-c)
+- [The prerequisites before starting](#prerequisites)
+- [What `malloc` is and how memory allocation works](#what-is-malloc)
+- [The purpose of `stdio.h`, `stdlib.h`, and `stdbool.h`](#the-header-files)
+- [What pointers are](#what-is-a-pointer)
+- [What `struct` and `typedef` are](#structs-and-typedef)
+- [How to build a dynamic array from scratch](#designing-our-dynamic-array)
+- [The time complexity of every operation](#time-complexity)
+- [Key takeaways and where to go next](#final-thoughts)
+
+---
+
+# What is an Array?
+
+An array is a collection of values stored **next to each other in memory**.
+
+For example,
+
+```text
+Index:   0   1   2   3
+Value:  10  20  30  40
+```
+
+Every element occupies a fixed amount of memory, so finding any element is extremely fast.
+
+If an integer occupies 4 bytes, the address of any element can be calculated as
+
+```text
+baseAddress + index × sizeof(int)
+```
+
+That's why array indexing is **O(1)**.
+
+---
+
+# Why Do We Need Arrays?
+
+Imagine storing student marks.
+
+Instead of writing
+
+```c
+int mark1 = 90;
+int mark2 = 82;
+int mark3 = 74;
+...
+```
+
+you simply write
+
+```c
+int marks[100];
+```
+
+Arrays let us
+
+- Store many values together
+- Access them instantly by index
+- Iterate using loops
+- Build more advanced data structures
+
+They're one of the fundamental building blocks of programming.
+
+---
+
+# Static Arrays
+
+A static array has a fixed size.
+
+```c
+int numbers[8];
+```
+
+Once created, it **cannot grow**.
+
+If you need room for 9 values, you're out of luck.
+
+Problems:
+
+- Wasted memory if the array is mostly empty.
+- Cannot expand when it becomes full.
+- Size must usually be known beforehand.
+
+---
+
+# Dynamic Arrays
+
+Dynamic arrays solve this problem.
+
+Instead of storing the array on the stack, we allocate memory on the heap.
+
+When the array becomes full:
+
+1. Allocate a larger block.
+2. Copy existing elements.
+3. Free the old memory.
+4. Continue using the new array.
+
+That's exactly how `std::vector` in C++ or `ArrayList` in Java works internally.
+
+---
+
+# Why Learn This in C?
+
+Many modern languages hide memory management from you.
+
+That's convenient—but it also hides what's really happening.
+
+C forces you to understand:
+
+- Memory allocation
+- Memory layout
+- Pointers
+- Heap vs stack
+- Data structures from first principles
+
+Once you understand them in C, higher-level languages become much easier.
+
+---
+
+# Prerequisites
+
+You should already know:
+
+- Variables
+- Functions
+- Loops
+- Basic conditionals
+- Integers
+
+Don't worry if you've never used pointers or dynamic memory before.
+
+We'll cover them here.
+
+---
+
+# The Header Files
+
+Our program starts with
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+```
+
+## stdio.h
+
+Provides input/output functions.
+
+Examples:
+
+```c
+printf();
+scanf();
+```
+
+---
+
+## stdlib.h
+
+Contains functions for memory allocation.
+
+Examples:
+
+```c
+malloc()
+calloc()
+realloc()
+free()
+exit()
+```
+
+Without this header, we cannot allocate memory dynamically.
+
+---
+
+## stdbool.h
+
+C originally didn't have a Boolean type.
+
+Including
+
+```c
+#include <stdbool.h>
+```
+
+lets us write
+
+```c
+bool found = true;
+```
+
+instead of
+
+```c
+int found = 1;
+```
+
+---
+
+# What is `malloc`?
+
+`malloc` stands for **Memory Allocation**.
+
+It allocates memory on the heap.
+
+Example:
+
+```c
+int *numbers = malloc(sizeof(int) * 8);
+```
+
+This allocates space for eight integers.
+
+Important:
+
+`malloc` **does not initialize memory**.
+
+If allocation fails, it returns
+
+```c
+NULL
+```
+
+which is why we always check it.
+
+---
+
+# What is a Pointer?
+
+A pointer doesn't store a value.
+
+It stores the **address** of another value.
+
+```c
+int age = 20;
+int *ptr = &age;
+```
+
+Memory looks like this:
+
+```text
+age = 20
+
+Address:
+0x1000
+```
+
+`ptr` stores
+
+```text
+0x1000
+```
+
+Using
+
+```c
+*ptr
+```
+
+means
+
+> Go to that address and read the value.
+
+Pointers are what make dynamic memory possible.
+
+---
+
+# Structs and Typedef
+
+Unlike C++, C doesn't have classes.
+
+Instead, we group related data using a `struct`.
+
+```c
+struct IntArray {
+    int *data;
+    int length;
+    int capacity;
+};
+```
+
+Without `typedef`, we'd have to write
+
+```c
+struct IntArray array;
+```
+
+everywhere.
+
+Instead we write
+
+```c
+typedef struct {
+    int *data;
+    int length;
+    int capacity;
+} IntArray;
+```
+
+Now we can simply write
+
+```c
+IntArray array;
+```
+
+Much cleaner.
+
+---
+
+# Designing Our Dynamic Array
+
+Our structure stores three things.
+
+```c
+typedef struct {
+    int *data;
+    int length;
+    int capacity;
+} IntArray;
+```
+
+### data
+
+A pointer to the actual integers stored on the heap.
+
+### length
+
+How many elements currently exist.
+
+### capacity
+
+How much memory has been allocated.
+
+These are **not the same thing**.
+
+Example:
+
+```text
+Capacity = 8
+Length = 3
+```
+
+There is room for eight elements, but only three are currently used.
+
+---
+
+# Default Capacity
+
+```c
+#define DEFAULT_CAPACITY 8
+```
+
+`#define` creates a compile-time constant.
+
+If the user requests an invalid capacity like
+
+```text
+-5
+```
+
+we'll use this default value.
+
+---
+
+# Creating the Array
+
+```c
+IntArray *createArray(int capacity)
+```
+
+Notice the return type:
+
+```c
+IntArray *
+```
+
+We're returning a **pointer** because the structure itself lives on the heap.
+
+---
+
+## Step 1 — Validate Capacity
+
+```c
+if (capacity <= 0)
+    capacity = DEFAULT_CAPACITY;
+```
+
+Negative or zero capacities don't make sense.
+
+---
+
+## Step 2 — Allocate the Structure
+
+```c
+IntArray *array = malloc(sizeof(IntArray));
+```
+
+This allocates memory for
+
+```text
+data
+length
+capacity
+```
+
+**Not** for the integers themselves.
+
+---
+
+## Step 3 — Check Allocation
+
+```c
+if (array == NULL)
+```
+
+If allocation fails,
+
+```c
+exit(EXIT_FAILURE);
+```
+
+prevents undefined behavior.
+
+---
+
+## Step 4 — Allocate Space for the Integers
+
+```c
+array->data = malloc(sizeof(int) * capacity);
+```
+
+If capacity is 8,
+
+```text
+8 × 4 bytes = 32 bytes
+```
+
+are allocated.
+
+Notice the arrow operator:
+
+```c
+array->data
+```
+
+is simply shorthand for
+
+```c
+(*array).data
+```
+
+---
+
+## Step 5 — Initialize Metadata
+
+```c
+array->length = 0;
+array->capacity = capacity;
+```
+
+Initially,
+
+- no elements exist
+- but memory has already been reserved
+
+---
+
+# Destroying the Array
+
+```c
+void destroyArray(IntArray *array)
+```
+
+Always free memory in reverse order.
+
+```c
+free(array->data);
+free(array);
+```
+
+First free the integer buffer.
+
+Then free the structure itself.
+
+---
+
+# Getting the Size
+
+```c
+int size(IntArray *array)
+```
+
+Simply returns
+
+```c
+array->length;
+```
+
+---
+
+# Is the Array Empty?
+
+```c
+bool isEmpty(IntArray *array)
+```
+
+Returns
+
+```c
+array->length == 0
+```
+
+---
+
+# Getting an Element
+
+```c
+get(array, index)
+```
+
+Before accessing memory we check
+
+```c
+if(index < 0 || index >= array->length)
+```
+
+This prevents reading memory outside the array.
+
+---
+
+# Updating an Element
+
+```c
+set(array, index, value);
+```
+
+Again we validate the index first.
+
+Then simply write
+
+```c
+array->data[index] = value;
+```
+
+---
+
+# Adding Elements
+
+This is the heart of a dynamic array.
+
+First we check
+
+```c
+if(array->length == array->capacity)
+```
+
+If they're equal, the array is full.
+
+We double the capacity.
+
+```c
+array->capacity *= 2;
+```
+
+Then allocate a larger block.
+
+```c
+int *newData = realloc(
+    array->data,
+    sizeof(int) * array->capacity
+);
+```
+
+## Why store the result in a temporary pointer?
+
+Never do this:
+
+```c
+array->data = realloc(...);
+```
+
+If `realloc()` fails,
+
+it returns
+
+```c
+NULL
+```
+
+and you've lost your original pointer, leaking memory.
+
+Instead:
+
+```c
+int *newData = realloc(...);
+
+if(newData == NULL)
+{
+    // original memory still exists
+}
+```
+
+Only after success do we write
+
+```c
+array->data = newData;
+```
+
+Finally,
+
+```c
+array->data[array->length++] = value;
+```
+
+stores the value and increments the length.
+
+---
+
+# Removing an Element
+
+Removing from the middle means every element after it shifts left.
+
+Suppose we remove index 2.
+
+Before:
+
+```text
+1 2 3 4 5
+```
+
+After:
+
+```text
+1 2 4 5
+```
+
+We do that using
+
+```c
+for(int i = index; i < array->length - 1; i++)
+```
+
+Notice the `length - 1`.
+
+If we looped until `length`, we'd eventually access
+
+```c
+array->data[length]
+```
+
+which is outside the array.
+
+After shifting,
+
+```c
+array->length--;
+```
+
+The last value doesn't need to be erased because it's no longer considered part of the array.
+
+---
+
+# Removing by Value
+
+Instead of providing an index,
+
+```c
+removeValue(array, value)
+```
+
+searches for the first matching element.
+
+When found,
+
+```c
+removeAt(array, i);
+```
+
+is called.
+
+If no value exists,
+
+```c
+false
+```
+
+is returned.
+
+---
+
+# Reversing the Array
+
+This uses the classic **two-pointer technique**.
+
+```text
+1 2 3 4 5
+```
+
+Swap first and last.
+
+```text
+5 2 3 4 1
+```
+
+Move inward.
+
+```text
+5 4 3 2 1
+```
+
+Implementation:
+
+```c
+left++;
+right--;
+```
+
+Continue until
+
+```text
+left >= right
+```
+
+---
+
+# Printing the Array
+
+Printing is straightforward.
+
+Loop through every element and print commas between them.
+
+Output:
+
+```text
+[3, 7, 6, -2]
+```
+
+---
+
+# Testing Everything
+
+Our `main()` function creates an array,
+
+adds values,
+
+removes one,
+
+reverses it,
+
+prints each step,
+
+and finally frees all memory.
+
+```text
+[3, 7, 6, -2]
+
+[3, 6, -2]
+
+[-2, 6, 3]
+```
+
+---
+
+# Time Complexity
+
+| Operation | Complexity |
+|-----------|------------|
+| Get | O(1) |
+| Set | O(1) |
+| Add (average) | O(1) |
+| Add (resize) | O(n) |
+| Remove | O(n) |
+| Search | O(n) |
+| Reverse | O(n) |
+
+Although resizing takes **O(n)**, it happens infrequently, making insertion **amortized O(1)**.
+
+---
+
+# Final Thoughts
+
+Building a dynamic array in C isn't just about creating another data structure—it's about understanding how computers manage memory.
+
+Once you understand:
+
+- pointers
+- heap allocation
+- `malloc`
+- `realloc`
+- `free`
+- contiguous memory
+
+you'll realize that containers like `std::vector`, Java's `ArrayList`, Go's slices, and even JavaScript arrays are all built on the same core ideas.
+
+The syntax changes from language to language, but the underlying concepts remain the same. Learning them once gives you a much deeper understanding of how software works under the hood.
