@@ -1,6 +1,6 @@
 ---
-title: "Build a Dynamic Array in C from Scratch: Understanding Memory, Pointers, and Data Structures"
-description: "Learn how dynamic arrays work internally by implementing one from scratch in C. We'll cover pointers, malloc, structs, static vs dynamic arrays, and memory management step by step."
+title: "Build a Dynamic Array in C from Scratch"
+description: "Learn how dynamic arrays work by building one in C — covering memory layout, pointers, structs, and heap allocation as one connected idea, not isolated fragments."
 author: "Noor-ul-Hassan"
 date: "2026-07-14"
 tags:
@@ -14,317 +14,74 @@ tags:
 
 # Build a Dynamic Array in C from Scratch
 
-If you've only programmed in JavaScript, Python, Java, or C++, you've probably used arrays without ever thinking about how they actually work.
+You've used `push()` in JavaScript, `append()` in Python, `add()` in Java. They feel instant. They never run out of space. You never think about them.
 
-Methods like `push()`, `pop()`, `insert()`, or `remove()` feel like magic.
+That's a problem — not because those abstractions are bad, but because you're using a tool without knowing what it costs. Every one of those methods is built on ideas you can understand completely. This article will show you how, in C, where the machine hides nothing from you.
 
-But they aren't.
-
-Someone had to implement them.
-
-In this blog, we'll build our own **dynamic array** from scratch in C. Along the way you'll understand memory allocation, pointers, structs, and why dynamic arrays are one of the most important data structures in computer science.
+By the end you'll have built a working dynamic array and, more importantly, a mental model that makes `std::vector`, Go slices, and Rust's `Vec` all obvious.
 
 ---
 
-## What You'll Learn
+## The Core Idea: Two Layers of Memory
 
-By the end of this article you'll understand:
+Before writing a single line, you need to understand the central insight that makes a dynamic array possible.
 
-- [What an array is](#what-is-an-array)
-- [Why arrays are needed](#why-do-we-need-arrays)
-- [The difference between static and dynamic arrays](#static-arrays)
-- [Why C is the best language to learn data structures](#why-learn-this-in-c)
-- [The prerequisites before starting](#prerequisites)
-- [What `malloc` is and how memory allocation works](#what-is-malloc)
-- [The purpose of `stdio.h`, `stdlib.h`, and `stdbool.h`](#the-header-files)
-- [What pointers are](#what-is-a-pointer)
-- [What `struct` and `typedef` are](#structs-and-typedef)
-- [How to build a dynamic array from scratch](#designing-our-dynamic-array)
-- [The time complexity of every operation](#time-complexity)
-- [Key takeaways and where to go next](#final-thoughts)
+A normal array is a fixed block of memory. You declare `int numbers[8]` and the compiler carves out exactly 32 bytes on the stack. That's it. If you need a 9th element, you're stuck.
+
+A dynamic array gets around this by living on the **heap** — a region of memory that your program can request and release at runtime, in any size, at any time. The heap doesn't get freed automatically when a function returns. You control it. That control is what makes resizing possible, and what makes memory bugs possible too.
+
+The dynamic array is two things at once: a block of integers sitting somewhere on the heap, and a small control structure that remembers where that block is, how big it is, and how many elements are currently in it. Everything we build is just bookkeeping those two things correctly.
 
 ---
 
-# What is an Array?
+## What You Need to Know First
 
-An array is a collection of values stored **next to each other in memory**.
+### Memory: Stack vs Heap
 
-For example,
-
-```text
-Index:   0   1   2   3
-Value:  10  20  30  40
-```
-
-Every element occupies a fixed amount of memory, so finding any element is extremely fast.
-
-If an integer occupies 4 bytes, the address of any element can be calculated as
-
-```text
-baseAddress + index × sizeof(int)
-```
-
-That's why array indexing is **O(1)**.
-
----
-
-# Why Do We Need Arrays?
-
-Imagine storing student marks.
-
-Instead of writing
+When you declare a local variable, it goes on the **stack**. The stack is fast and automatic — variables appear when a function is called and vanish when it returns.
 
 ```c
-int mark1 = 90;
-int mark2 = 82;
-int mark3 = 74;
-...
+void foo() {
+    int x = 10; // lives on the stack
+}               // x is gone here
 ```
 
-you simply write
+The **heap** is different. Memory there persists until you explicitly free it. You ask the OS for a chunk, use it, and free it when you're done. This is what enables data structures that outlive the function that created them.
+
+### Pointers
+
+A pointer is a variable that holds a memory address rather than a value.
 
 ```c
-int marks[100];
+int score = 99;
+int *ptr = &score; // ptr holds the address of score, not 99
 ```
 
-Arrays let us
+`&score` means "give me the address of score." `*ptr` means "go to that address and read what's there." They're inverse operations.
 
-- Store many values together
-- Access them instantly by index
-- Iterate using loops
-- Build more advanced data structures
-
-They're one of the fundamental building blocks of programming.
-
----
-
-# Static Arrays
-
-A static array has a fixed size.
-
-```c
-int numbers[8];
-```
-
-Once created, it **cannot grow**.
-
-If you need room for 9 values, you're out of luck.
-
-Problems:
-
-- Wasted memory if the array is mostly empty.
-- Cannot expand when it becomes full.
-- Size must usually be known beforehand.
-
----
-
-# Dynamic Arrays
-
-Dynamic arrays solve this problem.
-
-Instead of storing the array on the stack, we allocate memory on the heap.
-
-When the array becomes full:
-
-1. Allocate a larger block.
-2. Copy existing elements.
-3. Free the old memory.
-4. Continue using the new array.
-
-That's exactly how `std::vector` in C++ or `ArrayList` in Java works internally.
-
----
-
-# Why Learn This in C?
-
-Many modern languages hide memory management from you.
-
-That's convenient—but it also hides what's really happening.
-
-C forces you to understand:
-
-- Memory allocation
-- Memory layout
-- Pointers
-- Heap vs stack
-- Data structures from first principles
-
-Once you understand them in C, higher-level languages become much easier.
-
----
-
-# Prerequisites
-
-You should already know:
-
-- Variables
-- Functions
-- Loops
-- Basic conditionals
-- Integers
-
-Don't worry if you've never used pointers or dynamic memory before.
-
-We'll cover them here.
-
----
-
-# The Header Files
-
-Our program starts with
-
-```c
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdbool.h>
-```
-
-## stdio.h
-
-Provides input/output functions.
-
-Examples:
-
-```c
-printf();
-scanf();
-```
-
----
-
-## stdlib.h
-
-Contains functions for memory allocation.
-
-Examples:
-
-```c
-malloc()
-calloc()
-realloc()
-free()
-exit()
-```
-
-Without this header, we cannot allocate memory dynamically.
-
----
-
-## stdbool.h
-
-C originally didn't have a Boolean type.
-
-Including
-
-```c
-#include <stdbool.h>
-```
-
-lets us write
-
-```c
-bool found = true;
-```
-
-instead of
-
-```c
-int found = 1;
-```
-
----
-
-# What is `malloc`?
-
-`malloc` stands for **Memory Allocation**.
-
-It allocates memory on the heap.
-
-Example:
+Why does this matter? Because when you allocate memory on the heap, you get back an address — a pointer — to where that memory starts. There's no other way to refer to heap memory. Pointers aren't a language quirk; they're the only handle you have on dynamic allocation.
 
 ```c
 int *numbers = malloc(sizeof(int) * 8);
+// numbers holds the address of a 32-byte block on the heap
+// numbers[0], numbers[1], ... numbers[7] are all valid
 ```
 
-This allocates space for eight integers.
+`malloc` returns a pointer to the allocated block. `sizeof(int)` gives the size in bytes of one integer (typically 4). Multiply by 8 and you get 32 bytes — room for 8 integers.
 
-Important:
+### Structs
 
-`malloc` **does not initialize memory**.
-
-If allocation fails, it returns
-
-```c
-NULL
-```
-
-which is why we always check it.
-
----
-
-# What is a Pointer?
-
-A pointer doesn't store a value.
-
-It stores the **address** of another value.
-
-```c
-int age = 20;
-int *ptr = &age;
-```
-
-Memory looks like this:
-
-```text
-age = 20
-
-Address:
-0x1000
-```
-
-`ptr` stores
-
-```text
-0x1000
-```
-
-Using
-
-```c
-*ptr
-```
-
-means
-
-> Go to that address and read the value.
-
-Pointers are what make dynamic memory possible.
-
----
-
-# Structs and Typedef
-
-Unlike C++, C doesn't have classes.
-
-Instead, we group related data using a `struct`.
+C has no classes. To group related data, you use a `struct`.
 
 ```c
 struct IntArray {
-    int *data;
-    int length;
-    int capacity;
+    int *data;     // pointer to the integers on the heap
+    int length;    // how many elements are currently stored
+    int capacity;  // how much space is allocated
 };
 ```
 
-Without `typedef`, we'd have to write
-
-```c
-struct IntArray array;
-```
-
-everywhere.
-
-Instead we write
+`typedef` lets you drop the `struct` keyword every time you use it:
 
 ```c
 typedef struct {
@@ -334,499 +91,437 @@ typedef struct {
 } IntArray;
 ```
 
-Now we can simply write
+Now `IntArray arr;` is valid instead of `struct IntArray arr;`. Small thing, but it adds up.
+
+The `->` operator accesses a struct's field through a pointer:
 
 ```c
-IntArray array;
+array->length  // same as (*array).length
 ```
 
-Much cleaner.
+You'll use `->` constantly because our functions always receive a pointer to the struct, not the struct itself. Passing the struct by value would copy all three fields every time — wasteful, and it means modifications wouldn't be visible to the caller.
+
+### The Header Files
+
+```c
+#include <stdio.h>   // printf, scanf
+#include <stdlib.h>  // malloc, realloc, free, exit
+#include <stdbool.h> // bool, true, false
+```
+
+`stdlib.h` is the critical one. Every memory function we use lives there. Without it, `malloc` and `free` are undeclared.
+
+`stdbool.h` exists because C didn't originally have a boolean type. It gives you `bool`, `true`, and `false` as proper names instead of `int`, `1`, and `0`.
 
 ---
 
-# Designing Our Dynamic Array
+## The Structure
 
-Our structure stores three things.
-
-```c
-typedef struct {
-    int *data;
-    int length;
-    int capacity;
-} IntArray;
-```
-
-### data
-
-A pointer to the actual integers stored on the heap.
-
-### length
-
-How many elements currently exist.
-
-### capacity
-
-How much memory has been allocated.
-
-These are **not the same thing**.
-
-Example:
-
-```text
-Capacity = 8
-Length = 3
-```
-
-There is room for eight elements, but only three are currently used.
-
----
-
-# Default Capacity
+Now that the building blocks are clear, the struct makes obvious sense:
 
 ```c
 #define DEFAULT_CAPACITY 8
+
+typedef struct {
+    int *data;     // address of our integer block on the heap
+    int length;    // elements currently stored (logical size)
+    int capacity;  // elements we have room for (physical size)
+} IntArray;
 ```
 
-`#define` creates a compile-time constant.
+`length` and `capacity` are not the same thing. This distinction is the heart of how a dynamic array works.
 
-If the user requests an invalid capacity like
+```
+capacity = 8  (8 slots exist in memory)
+length   = 3  (only 3 are in use)
 
-```text
--5
+[ 10 | 20 | 30 | __ | __ | __ | __ | __ ]
+  [0]  [1]  [2]
 ```
 
-we'll use this default value.
+When `length == capacity`, the array is full and must grow before the next `add`.
+
+`#define DEFAULT_CAPACITY 8` is a compile-time constant. The preprocessor replaces every occurrence of `DEFAULT_CAPACITY` with `8` before the compiler sees the code. It's not a variable — it has no address and uses no runtime memory.
 
 ---
 
-# Creating the Array
+## Creating the Array
 
 ```c
-IntArray *createArray(int capacity)
+IntArray *createArray(int capacity) {
+
+    // Guard against nonsense input
+    if (capacity <= 0)
+        capacity = DEFAULT_CAPACITY;
+
+    // Allocate the control struct on the heap
+    // This gives us room for: one pointer, two ints
+    IntArray *array = malloc(sizeof(IntArray));
+
+    if (array == NULL) {
+        printf("Memory allocation failed\n");
+        exit(EXIT_FAILURE); // no safe way to recover here
+    }
+
+    // Allocate the integer block separately
+    // The struct just holds a pointer to this block
+    array->data = malloc(sizeof(int) * capacity);
+
+    if (array->data == NULL) {
+        printf("Memory allocation failed\n");
+        free(array); // don't leak the struct we just allocated
+        exit(EXIT_FAILURE);
+    }
+
+    array->length = 0;        // no elements yet
+    array->capacity = capacity; // but we have space reserved
+
+    return array; // return the address of the struct
+}
 ```
 
-Notice the return type:
+Notice we allocate **twice**. Once for the struct, and once for the integer data. These are two separate heap allocations, and that's why we must free both when we're done. The struct contains the address of the data block, but it doesn't own it in any automatic sense — we have to track and free it ourselves.
 
-```c
-IntArray *
-```
-
-We're returning a **pointer** because the structure itself lives on the heap.
+The return type is `IntArray *` — a pointer. We're not returning the struct itself; we're returning its address. This is the handle the caller will use for every subsequent operation.
 
 ---
 
-## Step 1 — Validate Capacity
+## Destroying the Array
 
 ```c
-if (capacity <= 0)
-    capacity = DEFAULT_CAPACITY;
+void destroyArray(IntArray *array) {
+    free(array->data); // free the integer block first
+    free(array);       // then free the struct
+}
 ```
 
-Negative or zero capacities don't make sense.
+Order matters. Free the data block first, then the struct. If you freed the struct first, `array->data` would be a dangling read — you'd be accessing memory through a pointer to something that's already freed.
+
+Every `malloc` must have exactly one matching `free`. This is the discipline C demands. Modern languages have garbage collectors to enforce this automatically. In C, it's on you.
 
 ---
 
-## Step 2 — Allocate the Structure
+## Getting and Setting Elements
 
 ```c
-IntArray *array = malloc(sizeof(IntArray));
+int get(IntArray *array, int index) {
+    if (index < 0 || index >= array->length) {
+        printf("Index out of bounds\n");
+        exit(EXIT_FAILURE);
+    }
+    return array->data[index];
+}
+
+void set(IntArray *array, int index, int value) {
+    if (index < 0 || index >= array->length) {
+        printf("Index out of bounds\n");
+        exit(EXIT_FAILURE);
+    }
+    array->data[index] = value;
+}
 ```
 
-This allocates memory for
+The bounds check is not optional. Without it, `array->data[index]` when `index >= length` reads memory that belongs to something else — possibly another variable, possibly the OS. C won't stop you. The behavior is undefined, which in practice means silent data corruption or a crash that's hard to trace.
 
-```text
-data
-length
-capacity
+Both operations are **O(1)** because `array->data[index]` computes directly to a memory address:
+
+```
+address = base_address + (index × sizeof(int))
 ```
 
-**Not** for the integers themselves.
+No searching. One arithmetic operation.
 
 ---
 
-## Step 3 — Check Allocation
+## Adding Elements: The Core of a Dynamic Array
+
+This is the function everything else builds toward.
 
 ```c
-if (array == NULL)
+void add(IntArray *array, int value) {
+
+    // Is the array full?
+    if (array->length == array->capacity) {
+
+        // Double the capacity — we'll explain why below
+        array->capacity *= 2;
+
+        // Ask the OS to resize our integer block
+        int *newData = realloc(
+            array->data,
+            sizeof(int) * array->capacity
+        );
+
+        // CRITICAL: store in a temp pointer, not array->data
+        // If realloc fails, it returns NULL — if we assigned
+        // directly to array->data we'd lose the original pointer
+        // and have a memory leak with no way to recover
+        if (newData == NULL) {
+            printf("Reallocation failed\n");
+            exit(EXIT_FAILURE);
+        }
+
+        // Only update once we know it succeeded
+        array->data = newData;
+    }
+
+    // Store the value and advance the length in one step
+    array->data[array->length++] = value;
+}
 ```
 
-If allocation fails,
+`realloc` is `malloc`'s smarter sibling. It takes an existing pointer and a new size. If it can extend the block in place, it does. If not, it allocates a new block, copies the old data, frees the old block, and returns the new address. The existing contents are preserved either way.
 
-```c
-exit(EXIT_FAILURE);
-```
+**Why double the capacity instead of growing by 1?**
 
-prevents undefined behavior.
+If you grew by 1 every time the array filled up, every single `add` would trigger a `realloc` and a copy of all existing elements. Adding `n` elements would cost `O(n²)` total.
+
+Doubling means resizes happen at sizes 4, 8, 16, 32, 64... Each resize copies everything, but the number of copies per element approaches 2 as `n` grows. Over many insertions, the average cost per `add` is **O(1)**. This is called **amortized constant time** — expensive occasionally, cheap on average.
 
 ---
 
-## Step 4 — Allocate Space for the Integers
+## Removing Elements
+
+### Remove by Index
 
 ```c
-array->data = malloc(sizeof(int) * capacity);
+void removeAt(IntArray *array, int index) {
+
+    if (index < 0 || index >= array->length) {
+        printf("Index out of bounds\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Shift every element after the removed one left by one position
+    for (int i = index; i < array->length - 1; i++) {
+        array->data[i] = array->data[i + 1];
+    }
+
+    // The last position still holds the old value, but we don't
+    // erase it — we just stop counting it as part of the array
+    array->length--;
+}
 ```
 
-If capacity is 8,
+The loop goes to `array->length - 1`, not `array->length`. At the final iteration, `i` is `length - 2` and we read `array->data[length - 1]`. If the loop ran to `length`, the last iteration would read `array->data[length]`, which is outside the allocated block.
 
-```text
-8 × 4 bytes = 32 bytes
-```
+This is **O(n)** in the worst case — removing from index 0 shifts every element.
 
-are allocated.
-
-Notice the arrow operator:
+### Remove by Value
 
 ```c
-array->data
+bool removeValue(IntArray *array, int value) {
+    for (int i = 0; i < array->length; i++) {
+        if (array->data[i] == value) {
+            removeAt(array, i);
+            return true;  // remove first match only
+        }
+    }
+    return false; // value wasn't in the array
+}
 ```
 
-is simply shorthand for
-
-```c
-(*array).data
-```
+Search linearly, delegate the actual removal to `removeAt`. Returns `false` when the value isn't found so the caller can detect the miss.
 
 ---
 
-## Step 5 — Initialize Metadata
+## Reversing the Array
 
 ```c
-array->length = 0;
-array->capacity = capacity;
+void reverse(IntArray *array) {
+    int left = 0;
+    int right = array->length - 1;
+
+    while (left < right) {
+        // Swap elements at left and right
+        int temp = array->data[left];
+        array->data[left] = array->data[right];
+        array->data[right] = temp;
+
+        // Move both pointers inward
+        left++;
+        right--;
+    }
+}
 ```
 
-Initially,
+The two-pointer technique. Start from opposite ends, swap, move inward, stop when they meet. **O(n)** time, **O(1)** extra space — no second array needed.
 
-- no elements exist
-- but memory has already been reserved
+The condition is `left < right`, not `left != right`. For an odd-length array, they'll converge on the middle element. That element doesn't need swapping with itself, so the loop correctly stops before touching it.
 
 ---
 
-# Destroying the Array
+## Printing
 
 ```c
-void destroyArray(IntArray *array)
+void printArray(IntArray *array) {
+    printf("[");
+    for (int i = 0; i < array->length; i++) {
+        printf("%d", array->data[i]);
+        if (i != array->length - 1)
+            printf(", ");
+    }
+    printf("]\n");
+}
 ```
 
-Always free memory in reverse order.
+The comma logic — print a comma after every element except the last — is a common pattern. The alternative (printing a comma before every element except the first) is equivalent; pick one and be consistent.
+
+---
+
+## Putting It Together
 
 ```c
+int main() {
+    IntArray *arr = createArray(4); // capacity 4, length 0
+
+    add(arr, 3);   // length 1
+    add(arr, 7);   // length 2
+    add(arr, 6);   // length 3
+    add(arr, -2);  // length 4, capacity 4 — full
+
+    printArray(arr); // [3, 7, 6, -2]
+
+    removeValue(arr, 7); // shift left, length becomes 3
+
+    printArray(arr); // [3, 6, -2]
+
+    reverse(arr); // two-pointer swap
+
+    printArray(arr); // [-2, 6, 3]
+
+    destroyArray(arr); // free data block, then free struct
+
+    return 0;
+}
+```
+
+Note: the first `add` after `createArray(4)` that would require a 5th slot would trigger a resize — capacity doubles to 8. In this `main` we add exactly 4 elements, so no resize occurs. To see it in action, add a 5th element.
+
+---
+
+## The Gotchas
+
+**Assigning `realloc` directly to the original pointer.**
+```c
+// Wrong — if realloc returns NULL, you've lost your data
+array->data = realloc(array->data, newSize);
+
+// Right — check before assigning
+int *newData = realloc(array->data, newSize);
+if (newData != NULL) array->data = newData;
+```
+
+**Freeing in the wrong order.**
+Free `array->data` before `array`. If you free the struct first, you're reading `array->data` through a dangling pointer.
+
+**Using `length` instead of `capacity` in the resize check.**
+The array is full when `length == capacity`. If you compare against the wrong field, you either resize too early (wasted allocations) or never resize at all (out-of-bounds writes).
+
+**Off-by-one in `removeAt`'s loop.**
+The loop runs to `array->length - 1`, not `array->length`. The last iteration reads `data[length - 1]`. Going one further reads past the end of the allocated block.
+
+**Not checking `malloc` for `NULL`.**
+`malloc` returns `NULL` when the OS can't satisfy the request. Dereferencing a `NULL` pointer is undefined behavior. Always check.
+
+**Using the array after `destroyArray`.**
+After you free memory, the pointer still holds the old address. Reading through it is undefined behavior. Set pointers to `NULL` after freeing if you need to guard against accidental reuse.
+
+---
+
+## Junior Pattern vs Senior Pattern
+
+**Resizing:**
+
+```c
+// Junior — assigns directly, leaks memory on failure
+array->data = realloc(array->data, sizeof(int) * array->capacity);
+if (array->data == NULL) exit(EXIT_FAILURE); // original pointer is gone
+
+// Senior — uses temp, original is recoverable on failure
+int *newData = realloc(array->data, sizeof(int) * array->capacity);
+if (newData == NULL) {
+    // array->data is still valid here, nothing was lost
+    exit(EXIT_FAILURE);
+}
+array->data = newData;
+```
+
+**Cleanup:**
+
+```c
+// Junior — frees struct first, then reads dangling pointer
+free(array);
+free(array->data); // undefined behavior: array is already freed
+
+// Senior — free data first, then the container
 free(array->data);
 free(array);
 ```
 
-First free the integer buffer.
-
-Then free the structure itself.
-
----
-
-# Getting the Size
+**Bounds checking:**
 
 ```c
-int size(IntArray *array)
-```
+// Junior — trusts the caller
+return array->data[index];
 
-Simply returns
-
-```c
-array->length;
-```
-
----
-
-# Is the Array Empty?
-
-```c
-bool isEmpty(IntArray *array)
-```
-
-Returns
-
-```c
-array->length == 0
-```
-
----
-
-# Getting an Element
-
-```c
-get(array, index)
-```
-
-Before accessing memory we check
-
-```c
-if(index < 0 || index >= array->length)
-```
-
-This prevents reading memory outside the array.
-
----
-
-# Updating an Element
-
-```c
-set(array, index, value);
-```
-
-Again we validate the index first.
-
-Then simply write
-
-```c
-array->data[index] = value;
-```
-
----
-
-# Adding Elements
-
-This is the heart of a dynamic array.
-
-First we check
-
-```c
-if(array->length == array->capacity)
-```
-
-If they're equal, the array is full.
-
-We double the capacity.
-
-```c
-array->capacity *= 2;
-```
-
-Then allocate a larger block.
-
-```c
-int *newData = realloc(
-    array->data,
-    sizeof(int) * array->capacity
-);
-```
-
-## Why store the result in a temporary pointer?
-
-Never do this:
-
-```c
-array->data = realloc(...);
-```
-
-If `realloc()` fails,
-
-it returns
-
-```c
-NULL
-```
-
-and you've lost your original pointer, leaking memory.
-
-Instead:
-
-```c
-int *newData = realloc(...);
-
-if(newData == NULL)
-{
-    // original memory still exists
+// Senior — validates before accessing
+if (index < 0 || index >= array->length) {
+    // handle error
 }
-```
-
-Only after success do we write
-
-```c
-array->data = newData;
-```
-
-Finally,
-
-```c
-array->data[array->length++] = value;
-```
-
-stores the value and increments the length.
-
----
-
-# Removing an Element
-
-Removing from the middle means every element after it shifts left.
-
-Suppose we remove index 2.
-
-Before:
-
-```text
-1 2 3 4 5
-```
-
-After:
-
-```text
-1 2 4 5
-```
-
-We do that using
-
-```c
-for(int i = index; i < array->length - 1; i++)
-```
-
-Notice the `length - 1`.
-
-If we looped until `length`, we'd eventually access
-
-```c
-array->data[length]
-```
-
-which is outside the array.
-
-After shifting,
-
-```c
-array->length--;
-```
-
-The last value doesn't need to be erased because it's no longer considered part of the array.
-
----
-
-# Removing by Value
-
-Instead of providing an index,
-
-```c
-removeValue(array, value)
-```
-
-searches for the first matching element.
-
-When found,
-
-```c
-removeAt(array, i);
-```
-
-is called.
-
-If no value exists,
-
-```c
-false
-```
-
-is returned.
-
----
-
-# Reversing the Array
-
-This uses the classic **two-pointer technique**.
-
-```text
-1 2 3 4 5
-```
-
-Swap first and last.
-
-```text
-5 2 3 4 1
-```
-
-Move inward.
-
-```text
-5 4 3 2 1
-```
-
-Implementation:
-
-```c
-left++;
-right--;
-```
-
-Continue until
-
-```text
-left >= right
+return array->data[index];
 ```
 
 ---
 
-# Printing the Array
+## Where This Lives in the Real World
 
-Printing is straightforward.
+`std::vector` in C++ is this exact structure. The underlying implementation uses `new[]` instead of `malloc`, but the capacity/length distinction, the doubling strategy, and the contiguous memory layout are identical.
 
-Loop through every element and print commas between them.
+Go slices have a header with `ptr`, `len`, and `cap` — those are our `data`, `length`, and `capacity`. When you `append` past `cap`, Go allocates a new backing array, copies, and returns a new slice header.
 
-Output:
+Rust's `Vec<T>` is the same: a heap-allocated contiguous buffer, a length, and a capacity. The ownership system handles the freeing automatically, but the memory layout underneath is what you just built.
 
-```text
-[3, 7, 6, -2]
+---
+
+## Time Complexity
+
+| Operation | Complexity | Why |
+|-----------|------------|-----|
+| `get` | O(1) | Direct address calculation |
+| `set` | O(1) | Direct address calculation |
+| `add` (no resize) | O(1) | Write to `data[length]`, increment |
+| `add` (resize) | O(n) | `realloc` copies all elements |
+| `add` (amortized) | O(1) | Resizes are infrequent enough |
+| `removeAt` | O(n) | Shift all elements after index |
+| `removeValue` | O(n) | Linear scan + shift |
+| `reverse` | O(n) | Visit each element once |
+
+---
+
+## Your Turn
+
+Extend the implementation with these two functions:
+
+```c
+// Insert a value at a specific index, shifting everything right
+void insertAt(IntArray *array, int index, int value);
+
+// Return the index of the first occurrence of value, or -1 if not found
+int indexOf(IntArray *array, int value);
 ```
 
----
+Constraints: `insertAt` must handle growth the same way `add` does. `indexOf` must return `-1`, not exit, when the value is absent.
 
-# Testing Everything
+You'll know you're done when this `main` produces the expected output:
 
-Our `main()` function creates an array,
-
-adds values,
-
-removes one,
-
-reverses it,
-
-prints each step,
-
-and finally frees all memory.
-
-```text
-[3, 7, 6, -2]
-
-[3, 6, -2]
-
-[-2, 6, 3]
+```c
+IntArray *arr = createArray(4);
+add(arr, 10);
+add(arr, 30);
+insertAt(arr, 1, 20); // insert 20 between 10 and 30
+printArray(arr);      // [10, 20, 30]
+printf("%d\n", indexOf(arr, 20)); // 1
+printf("%d\n", indexOf(arr, 99)); // -1
+destroyArray(arr);
 ```
-
----
-
-# Time Complexity
-
-| Operation | Complexity |
-|-----------|------------|
-| Get | O(1) |
-| Set | O(1) |
-| Add (average) | O(1) |
-| Add (resize) | O(n) |
-| Remove | O(n) |
-| Search | O(n) |
-| Reverse | O(n) |
-
-Although resizing takes **O(n)**, it happens infrequently, making insertion **amortized O(1)**.
-
----
-
-# Final Thoughts
-
-Building a dynamic array in C isn't just about creating another data structure—it's about understanding how computers manage memory.
-
-Once you understand:
-
-- pointers
-- heap allocation
-- `malloc`
-- `realloc`
-- `free`
-- contiguous memory
-
-you'll realize that containers like `std::vector`, Java's `ArrayList`, Go's slices, and even JavaScript arrays are all built on the same core ideas.
-
-The syntax changes from language to language, but the underlying concepts remain the same. Learning them once gives you a much deeper understanding of how software works under the hood.
