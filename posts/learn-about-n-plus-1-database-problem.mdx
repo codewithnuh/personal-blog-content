@@ -3,6 +3,7 @@ title: "The N+1 Problem in Prisma: How I Fixed a Slow API with a Single Line"
 description: "Understand how the N+1 query problem appears in Prisma ORM, why it silently killsdatabase performance, and how to fix it with include and batched queries. A practical guide forNode.js developers."
 author: "Noor-ul-Hassan"
 date: "2026-05-10"
+category: "learning
 tags:
     - Prisma
     - Database 
@@ -12,15 +13,13 @@ tags:
     - Backend
 ---
 
-
-
 A few months ago, a small internal dashboard I had built started taking over four seconds to load. The page was simple — it listed recent projects and the person who owned each one. With a handful of test records it had been instantaneous, but now with thirty real teams and a growing project list, the endpoint was crawling. The profiler showed nothing alarming on the CPU side; the database was barely doing any work. Yet the response times kept growing.
 
 The culprit was an N+1 query loop I had written myself without a second thought. I fixed it by adding one `include` in Prisma, and the response time collapsed from 1.8 seconds to 48 milliseconds. Here’s how I dug into the problem, what I learned about Prisma’s relation loading, and the patterns I now use to avoid shipping another N+1 bottleneck.
 
 ## What is the N+1 problem, precisely?
 
-You write one query that returns N records. Then, inside your application code, you iterate over those N records and run an additional query *for each one*. That’s 1 query for the list, plus N queries for the related data. In a small dataset the overhead is invisible. As your data grows, the number of database round trips grows linearly, and you pay a huge latency tax without any increase in real work.
+You write one query that returns N records. Then, inside your application code, you iterate over those N records and run an additional query _for each one_. That’s 1 query for the list, plus N queries for the related data. In a small dataset the overhead is invisible. As your data grows, the number of database round trips grows linearly, and you pay a huge latency tax without any increase in real work.
 
 The name “N+1” is often associated with lazy-loading ORMs that fetch relations on access, but Prisma doesn’t do lazy loading. Instead, the problem creeps in when you manually fetch related data in a loop because you forget or don’t realize that Prisma can grab everything in one go.
 
@@ -31,7 +30,7 @@ We had a `Project` model and a `User` model connected by a foreign key `ownerId`
 ```ts
 const projects = await prisma.project.findMany({
   take: 25,
-  orderBy: { updatedAt: 'desc' },
+  orderBy: { updatedAt: "desc" },
 });
 
 const result = [];
@@ -61,7 +60,7 @@ Instead of looping, you tell Prisma to fetch the related user in the same query 
 ```ts
 const projects = await prisma.project.findMany({
   take: 25,
-  orderBy: { updatedAt: 'desc' },
+  orderBy: { updatedAt: "desc" },
   include: {
     owner: {
       select: { name: true, email: true },
@@ -118,7 +117,7 @@ async function fetchOwnerName(projectId) {
 }
 
 const projectNames = await Promise.all(
-  projects.map((p) => fetchOwnerName(p.id))
+  projects.map((p) => fetchOwnerName(p.id)),
 );
 ```
 
@@ -130,7 +129,7 @@ Enable query logging:
 
 ```ts
 const prisma = new PrismaClient({
-  log: ['query'],
+  log: ["query"],
 });
 ```
 

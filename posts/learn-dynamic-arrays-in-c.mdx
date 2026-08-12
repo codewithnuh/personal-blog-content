@@ -3,6 +3,7 @@ title: "Build a Dynamic Array in C from Scratch"
 description: "Learn how dynamic arrays work by building one in C — covering memory layout, pointers, structs, and heap allocation as one connected idea, not isolated fragments."
 author: "Noor-ul-Hassan"
 date: "2026-07-14"
+category: "learning"
 tags:
   - C
   - Data Structures
@@ -403,6 +404,7 @@ Note: the first `add` after `createArray(4)` that would require a 5th slot would
 ## The Gotchas
 
 **Assigning `realloc` directly to the original pointer.**
+
 ```c
 // Wrong — if realloc returns NULL, you've lost your data
 array->data = realloc(array->data, newSize);
@@ -486,16 +488,16 @@ Rust's `Vec<T>` is the same: a heap-allocated contiguous buffer, a length, and a
 
 ## Time Complexity
 
-| Operation | Complexity | Why |
-|-----------|------------|-----|
-| `get` | O(1) | Direct address calculation |
-| `set` | O(1) | Direct address calculation |
-| `add` (no resize) | O(1) | Write to `data[length]`, increment |
-| `add` (resize) | O(n) | `realloc` copies all elements |
-| `add` (amortized) | O(1) | Resizes are infrequent enough |
-| `removeAt` | O(n) | Shift all elements after index |
-| `removeValue` | O(n) | Linear scan + shift |
-| `reverse` | O(n) | Visit each element once |
+| Operation         | Complexity | Why                                |
+| ----------------- | ---------- | ---------------------------------- |
+| `get`             | O(1)       | Direct address calculation         |
+| `set`             | O(1)       | Direct address calculation         |
+| `add` (no resize) | O(1)       | Write to `data[length]`, increment |
+| `add` (resize)    | O(n)       | `realloc` copies all elements      |
+| `add` (amortized) | O(1)       | Resizes are infrequent enough      |
+| `removeAt`        | O(n)       | Shift all elements after index     |
+| `removeValue`     | O(n)       | Linear scan + shift                |
+| `reverse`         | O(n)       | Visit each element once            |
 
 ---
 
