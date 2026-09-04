@@ -1,0 +1,1126 @@
+---
+title: "Foundations of System Design: Learn It the Way I Wish Someone Taught Me"
+description: "A practical, problem-driven introduction to system design. Start with one request and add concepts only when your system actually needs them."
+author: "Noor-ul-Hassan"
+date: "2026-09-04"
+category: "learning"
+tags:
+  - System Design
+  - Architecture
+  - Backend
+  - Scalability
+  - Distributed Systems
+---
+
+When I first started learning system design, I felt overwhelmed.
+
+Load balancers. Caches. Message queues. Replication. Sharding. Distributed systems.
+
+There are a lot of terms. And most guides throw them at you like a vocabulary test.
+
+But here is the thing: I don't think the best way to learn system design is to memorize diagrams or vocabulary.
+
+I prefer starting with something much simpler:
+
+> **Start with one request. Then introduce a new concept only when the system actually needs it.**
+
+That is what we are going to do in this guide.
+
+We will start with a very small application and gradually make it capable of handling more traffic and more failures. Every new concept we introduce will be because the system actually broke and needed it.
+
+If you have ever felt like system design is "too advanced" or "not for you" yet, I promise you it is. You just need the right entry point.
+
+Let's build it together.
+
+## What we will cover
+
+- What system design actually means (and why it is not just for senior engineers)
+- How a browser request travels to your server
+- Where the database fits and why relational databases are useful
+- Transactions and why they matter
+- Scaling: vertical and horizontal
+- Load balancers and how they distribute traffic
+- Health checks and detecting failed servers
+- Redundancy and why it matters
+- The architecture we built and the problems we have not solved yet
+- The mental model for approaching any system design problem
+
+Let's start.
+
+---
+
+## What is System Design?
+
+In simple terms, **system design is about deciding how the different parts of a software system should work together as the system grows.**
+
+When your application has 10 users, almost any reasonable architecture can work.
+
+When it has 100,000 users, things start getting interesting.
+
+Your server has limited CPU and memory.
+
+Your database has limits.
+
+Networks fail.
+
+Servers crash.
+
+Requests take longer than expected.
+
+Two users can try to change the same data at the same time.
+
+So system design is not just:
+
+> "How do I make this application work?"
+
+It becomes:
+
+> **"How do I make this application continue working as traffic, data, and failures increase?"**
+
+If that question excites you, you are in the right place.
+
+---
+
+## A Request From the Browser
+
+Imagine you have a frontend application running in the browser.
+
+The browser needs a list of products.
+
+It sends a request:
+
+```text
+Browser
+   |
+   | GET /products
+   ↓
+api.example.com
+```
+
+But `api.example.com` is not the server's IP address.
+
+It is a **domain name**.
+
+The browser needs to find the IP address associated with that domain.
+
+This is where **DNS (Domain Name System)** comes in.
+
+Very roughly:
+
+```text
+Browser
+   |
+   | "Where is api.example.com?"
+   ↓
+DNS
+   |
+   | "It is available at this IP"
+   ↓
+IP address
+   |
+   ↓
+Server
+```
+
+DNS is basically the system that helps translate human-readable domain names into network addresses.
+
+You do not need to remember the entire DNS process yet.
+
+For now, just remember:
+
+> **Domain name → DNS resolution → IP address → server**
+
+---
+
+## The Server Processes the Request
+
+Now the request reaches our server.
+
+The server receives:
+
+```http
+GET /products
+```
+
+It needs to retrieve the products from the database.
+
+So our system currently looks like this:
+
+```text
+Client
+   |
+   | Request
+   ↓
+Server
+   |
+   | Query
+   ↓
+Database
+```
+
+The database returns the data:
+
+```text
+Database
+   |
+   | Products
+   ↓
+Server
+   |
+   | JSON response
+   ↓
+Client
+```
+
+The complete flow is:
+
+```text
+Client
+   ↓
+Server
+   ↓
+Database
+   ↓
+Server
+   ↓
+Client
+```
+
+At this point, everything looks simple.
+
+And that is exactly what we want.
+
+> **Do not introduce a load balancer, Redis, Kafka, Kubernetes and 15 other things when one server is perfectly capable of handling the application.**
+
+---
+
+## Where Does the Database Fit?
+
+Let us say our application has these entities:
+
+```text
+Users
+Products
+Orders
+Accounts
+Sessions
+```
+
+This data has structure.
+
+A user has an ID, name and email.
+
+A product has an ID, name and price.
+
+An order belongs to a user and contains products.
+
+This is where a **relational database** can be a very good fit.
+
+Examples include:
+
+* PostgreSQL
+* MySQL
+* Oracle
+* SQLite
+
+Relational databases organize data into **tables**, which contain **rows** and **columns**.
+
+For example:
+
+```text
+users
+
+id | name | email
+---|------|----------------
+1  | Noor | noor@example.com
+2  | Ali  | ali@example.com
+```
+
+And:
+
+```text
+products
+
+id | name       | price
+---|------------|------
+1  | Keyboard   | 100
+2  | Mouse      | 50
+```
+
+The important thing is not memorizing the names of databases.
+
+The important question is:
+
+> **What kind of data and guarantees does my application need?**
+
+---
+
+## Why Relational Databases Are Useful
+
+One major advantage of relational databases is that they let us model relationships between data.
+
+Suppose Noor buys a keyboard.
+
+We might have:
+
+```text
+users
+  ↓
+orders
+  ↓
+order_items
+  ↓
+products
+```
+
+The database can represent those relationships explicitly.
+
+We can then query information such as:
+
+> Which products did this user purchase?
+
+This is where SQL and operations such as `JOIN` become useful.
+
+For example, conceptually:
+
+```sql
+SELECT users.name, products.name
+FROM users
+JOIN orders ON orders.user_id = users.id
+JOIN order_items ON order_items.order_id = orders.id
+JOIN products ON products.id = order_items.product_id;
+```
+
+You do not need to memorize this query.
+
+The important idea is that relational databases are very good when your data has clear relationships and you need strong consistency around those relationships.
+
+---
+
+## Transactions
+
+Now we have reached our first really important system-design problem.
+
+Imagine a user places an order.
+
+Two things need to happen:
+
+```text
+1. Create the order
+2. Deduct the user's balance
+```
+
+What happens if step 1 succeeds but step 2 fails?
+
+We could end up with:
+
+```text
+Order created
+Money not deducted
+```
+
+That is an invalid state for many applications.
+
+This is where **transactions** become important.
+
+A transaction allows us to group multiple database operations into one logical operation.
+
+Conceptually:
+
+```text
+BEGIN TRANSACTION
+
+Create order
+Deduct balance
+
+COMMIT
+```
+
+If something goes wrong:
+
+```text
+BEGIN TRANSACTION
+
+Create order
+Deduct balance ← FAIL
+
+ROLLBACK
+```
+
+The database can roll back the changes made by the transaction.
+
+The simple mental model is:
+
+> **Either the required operations succeed together, or the transaction does not commit their changes.**
+
+Transactions are built around the **ACID** properties:
+
+```text
+A → Atomicity
+C → Consistency
+I → Isolation
+D → Durability
+```
+
+You do not need to master ACID right now.
+
+Just understand why transactions exist:
+
+> **They help us keep related database operations in a valid state when something fails or when multiple operations happen concurrently.**
+
+---
+
+## Our First Bottleneck
+
+So far we have:
+
+```text
+                ┌──────────┐
+Client ────────→│  Server  │
+                └────┬─────┘
+                     │
+                     ↓
+                ┌──────────┐
+                │ Database │
+                └──────────┘
+```
+
+Now imagine our application becomes popular.
+
+We start getting:
+
+```text
+10 requests/second
+```
+
+Then:
+
+```text
+100 requests/second
+```
+
+Then:
+
+```text
+1,000 requests/second
+```
+
+Our server has limited resources.
+
+It has:
+
+```text
+CPU
+RAM
+Network
+Disk
+```
+
+At some point, one machine may no longer be enough.
+
+Now we have to think about scaling.
+
+This is where system design starts becoming interesting.
+
+---
+
+## Vertical Scaling
+
+The first thing we can do is make the existing server stronger.
+
+Maybe we currently have:
+
+```text
+4 CPU cores
+8 GB RAM
+```
+
+We could upgrade it to:
+
+```text
+16 CPU cores
+64 GB RAM
+```
+
+This is called **vertical scaling**.
+
+In simple terms:
+
+> **Make the machine bigger.**
+
+It is easy to understand and often the simplest solution.
+
+But it has limits.
+
+### Problem 1: Hardware has limits
+
+You cannot infinitely increase the CPU and RAM of one machine.
+
+Eventually you reach the limits of the available hardware or the cost becomes unreasonable.
+
+### Problem 2: Single point of failure
+
+We still have one server.
+
+If that server goes down:
+
+```text
+Server 💥
+   ↓
+Application unavailable
+```
+
+This is a **single point of failure**.
+
+A single point of failure is a component whose failure can bring down an important part of the system.
+
+So we have solved one problem but created another question:
+
+> **Can we run multiple servers?**
+
+---
+
+## Horizontal Scaling
+
+Instead of making one server bigger, we can add more servers.
+
+For example:
+
+```text
+        Server 1
+       /
+Client ── Server 2
+       \
+        Server 3
+```
+
+This is called **horizontal scaling**.
+
+Instead of:
+
+```text
+1 very powerful server
+```
+
+we have:
+
+```text
+3 servers
+```
+
+Now if one server fails, the other servers may still be able to handle requests.
+
+But we have created a new problem.
+
+How does the client know which server to talk to?
+
+We do not want clients manually choosing:
+
+```text
+server-1.example.com
+server-2.example.com
+server-3.example.com
+```
+
+We need something in front of them.
+
+---
+
+## Load Balancer
+
+This is where a **load balancer** comes in.
+
+A load balancer receives incoming requests and decides which server should handle each request.
+
+Our architecture becomes:
+
+```text
+                    ┌──────────┐
+                    │ Server 1 │
+                   /
+Client → Load Balancer → Server 2
+                   \
+                    └──────────┘
+                         Server 3
+```
+
+The client does not need to know about all the application servers.
+
+It talks to the load balancer.
+
+The load balancer distributes traffic between available servers.
+
+Now we have:
+
+```text
+Client
+   ↓
+Load Balancer
+   ↓
+┌────────┬────────┬────────┐
+│Server 1│Server 2│Server 3│
+└────────┴────────┴────────┘
+```
+
+This gives us more capacity and can improve availability.
+
+But now we need to decide:
+
+> **How does the load balancer choose a server?**
+
+---
+
+## Load-Balancing Algorithms
+
+There is not one universal algorithm.
+
+Different algorithms work better for different workloads.
+
+### Round Robin
+
+The load balancer sends requests in sequence:
+
+```text
+Request 1 → Server 1
+Request 2 → Server 2
+Request 3 → Server 3
+Request 4 → Server 1
+```
+
+Simple and useful when servers have similar capacity and requests have roughly similar cost.
+
+### Weighted Round Robin
+
+Maybe our servers are not equally powerful.
+
+```text
+Server 1 → weight 1
+Server 2 → weight 2
+Server 3 → weight 3
+```
+
+The stronger server receives more traffic.
+
+### Least Connections
+
+The load balancer sends a new request to the server currently handling the fewest active connections.
+
+```text
+Server 1 → 30 connections
+Server 2 → 12 connections
+Server 3 → 21 connections
+
+New request → Server 2
+```
+
+This can be useful when requests have different durations.
+
+### IP Hash
+
+The load balancer hashes the client's IP address and uses the result to choose a server.
+
+Conceptually:
+
+```text
+Client IP
+   ↓
+Hash
+   ↓
+Server selection
+```
+
+This can provide a form of request affinity, although relying on IP alone has limitations.
+
+### Random
+
+The load balancer randomly chooses an available server.
+
+Simple, but whether it is appropriate depends on the workload and implementation.
+
+### Least Response Time
+
+The load balancer can consider response times and direct traffic toward servers that are responding faster.
+
+This can be useful when server load is not evenly distributed.
+
+### Consistent Hashing
+
+**Consistent hashing** is useful in systems where we want related keys to map predictably to servers while minimizing how much mapping changes when servers are added or removed.
+
+It becomes especially useful in distributed caches and partitioned systems.
+
+Do not worry if that sounds complicated.
+
+We will come back to it when we actually need it.
+
+---
+
+## But What If a Server Is Dead?
+
+Imagine we have:
+
+```text
+Server 1 → healthy
+Server 2 → healthy
+Server 3 → crashed
+```
+
+We do not want the load balancer to continue sending traffic to Server 3.
+
+This is where **health checks** come in.
+
+The load balancer periodically checks whether a server is healthy.
+
+For example:
+
+```http
+GET /health
+```
+
+The server might respond:
+
+```json
+{
+  "status": "ok"
+}
+```
+
+If the server stops responding or reports that it is not ready, the load balancer can stop sending new traffic to it.
+
+So now:
+
+```text
+             Load Balancer
+              /         \
+             ↓           ↓
+        Server 1      Server 2
+        healthy       healthy
+
+        Server 3
+        unhealthy
+           X
+```
+
+This is much better than blindly trusting that every server is alive.
+
+---
+
+## Health Checks Are More Than "Is the Process Running?"
+
+There is an important distinction here.
+
+A server process can be running while the application is not actually ready to serve traffic.
+
+For example:
+
+```text
+Node process → running
+Database     → unavailable
+```
+
+The process itself is alive.
+
+But the application might not be able to perform useful work.
+
+This is why production systems often distinguish between things such as:
+
+```text
+Liveness
+Readiness
+```
+
+**Liveness** asks something like:
+
+> Is the application process alive?
+
+**Readiness** asks:
+
+> Is the application ready to receive traffic?
+
+This distinction becomes important when deploying applications, restarting services, and handling failures.
+
+---
+
+## Redundancy
+
+We have now introduced another important idea:
+
+**Redundancy.**
+
+Instead of depending on one component:
+
+```text
+Server
+```
+
+we have:
+
+```text
+Server 1
+Server 2
+Server 3
+```
+
+If one fails, others can continue serving traffic.
+
+The same principle can apply to other parts of the system.
+
+For example:
+
+```text
+Multiple application servers
+Multiple database replicas
+Multiple cache nodes
+Multiple availability zones
+```
+
+The goal is to avoid unnecessary single points of failure.
+
+But redundancy creates another problem.
+
+If we have three application servers, where is the user's session stored?
+
+And if all three servers need the same data, how do they share it?
+
+This is where our simple architecture starts becoming a distributed system.
+
+---
+
+## The Architecture We Have Built
+
+Let us stop here and look at how far we have come.
+
+We started with:
+
+```text
+Client → Server → Database
+```
+
+Then traffic increased.
+
+We added vertical scaling.
+
+Then we reached the limits of one machine.
+
+We added horizontal scaling.
+
+Then we needed something to distribute traffic.
+
+We added a load balancer.
+
+Then we needed to detect failed servers.
+
+We added health checks.
+
+Our architecture now looks roughly like:
+
+```text
+                         ┌───────────┐
+                         │ Database  │
+                         └─────▲─────┘
+                               │
+                               │
+                         ┌─────┴─────┐
+                         │   Load    │
+Client ─────────────────→│ Balancer  │
+                         └─────┬─────┘
+                         ┌─────┼─────┐
+                         ↓     ↓     ↓
+                      Server Server Server
+                         1     2     3
+```
+
+Notice something important.
+
+We did not start with all of these components.
+
+We **earned** each component by encountering a problem.
+
+That is how I think system design should be learned.
+
+---
+
+## The Problems We Have Not Solved Yet
+
+Our system is better, but we are not finished.
+
+We still have several problems.
+
+### Database bottleneck
+
+All servers are talking to one database.
+
+What happens when database traffic becomes too high?
+
+We might need:
+
+* indexes
+* query optimization
+* connection pooling
+* caching
+* read replicas
+* partitioning
+* sharding
+
+But we should not add these just because they exist.
+
+We add them when the problem requires them.
+
+### Repeated expensive requests
+
+Suppose thousands of users request the same product:
+
+```text
+GET /products/123
+```
+
+Every request goes:
+
+```text
+Server → Database
+```
+
+Why query the database 10,000 times if the data does not change frequently?
+
+This is where **caching** becomes useful.
+
+### Background work
+
+Suppose creating an account also requires:
+
+```text
+Send email
+Generate report
+Process image
+Notify another service
+```
+
+Do we really want the HTTP request to wait for all of that?
+
+Probably not.
+
+This leads us toward:
+
+```text
+Queues
+Background workers
+Asynchronous processing
+```
+
+### Service failures
+
+What happens if another service is temporarily unavailable?
+
+Do we retry?
+
+How many times?
+
+How quickly?
+
+What if retries make the problem worse?
+
+This leads us toward:
+
+```text
+Timeouts
+Retries
+Backoff
+Circuit breakers
+Idempotency
+```
+
+### Data growth
+
+What happens when our database grows from:
+
+```text
+1 GB
+```
+
+to:
+
+```text
+1 TB
+```
+
+Eventually we may need to think about:
+
+```text
+Partitioning
+Archiving
+Replication
+Sharding
+```
+
+And this is where system design starts becoming much deeper.
+
+---
+
+## The Mental Model I Want You to Keep
+
+If you are learning system design, do not try to memorize diagrams.
+
+Instead, keep asking:
+
+> **What is the bottleneck?**
+
+Then:
+
+> **What failure can happen here?**
+
+Then:
+
+> **What happens when traffic increases?**
+
+Then:
+
+> **What happens when this component goes down?**
+
+Then:
+
+> **What consistency does the application actually need?**
+
+Then:
+
+> **What is the simplest solution that solves the problem?**
+
+That last question is important.
+
+A system with:
+
+```text
+Client
+ ↓
+Server
+ ↓
+PostgreSQL
+```
+
+is not a bad architecture simply because it does not have Kafka, Redis, Kubernetes and 20 microservices.
+
+If that system handles the workload reliably, **it is a good system**.
+
+Good system design is not about adding more components.
+
+It is about making the right tradeoffs for the problem you actually have.
+
+---
+
+## Where We Go From Here
+
+We started with one request:
+
+```text
+Client
+   ↓
+Server
+   ↓
+Database
+```
+
+Then we introduced concepts only when we needed them:
+
+```text
+More traffic
+   ↓
+Scaling
+   ↓
+Horizontal scaling
+   ↓
+Load balancer
+   ↓
+Health checks
+   ↓
+Redundancy
+```
+
+And this is only the beginning.
+
+From here, we can start introducing:
+
+```text
+Caching
+    ↓
+Database scaling
+    ↓
+Read replicas
+    ↓
+Queues
+    ↓
+Background workers
+    ↓
+Retries and backoff
+    ↓
+Idempotency
+    ↓
+Consistency
+    ↓
+Replication
+    ↓
+Partitioning
+    ↓
+Sharding
+    ↓
+Distributed systems
+```
+
+We will introduce each one when there is a real problem that requires it.
+
+Because that is the way I wish someone had taught me system design.
+
+Not:
+
+> "Here are 50 components. Memorize them."
+
+But:
+
+> **"Here is a system. Let's see what breaks when we push it."**
+
+That is where system design actually starts.
+
+---
+
+## What You Learned
+
+Let us take a step back.
+
+You started with a single browser request and ended up with:
+
+- A server that processes requests
+- A relational database that stores structured data
+- Transactions that keep related operations consistent
+- Vertical scaling to handle more load
+- Horizontal scaling to handle even more
+- A load balancer that distributes traffic across servers
+- Health checks that detect failed servers
+- Redundancy that avoids single points of failure
+
+And you did not just memorize these concepts.
+
+You **encountered each problem** and solved it with the right tool.
+
+That is the mental model. That is what matters.
+
+The next time someone says "you need a load balancer," you will not just know what it is.
+
+You will know **why** it exists.
+
+And that makes all the difference.
+
+---
+
+## See Also
+
+If you found this helpful, here are some related topics worth exploring:
+
+- **Caching** — Why we store frequently accessed data closer to the application
+- **Database Replication** — How we use multiple database copies for read scalability
+- **Message Queues** — How we handle background work without blocking requests
+- **Consistent Hashing** — How we distribute data across servers without chaos
+- **CAP Theorem** — The fundamental tradeoff in distributed systems
+
+Each of these builds on the foundations we covered here.
+
+Take them one at a time. Introduce each concept only when your system actually needs it.
+
+That is the way.
