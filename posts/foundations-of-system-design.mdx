@@ -465,7 +465,7 @@ We still have one server.
 If that server goes down:
 
 ```text
-Server 💥
+Server crashes
    ↓
 Application unavailable
 ```
@@ -702,6 +702,10 @@ So now:
 ```
 
 This is much better than blindly trusting that every server is alive.
+
+If you want a ready-made health check implementation you can drop into an Express, Fastify or Hono app, I built one for Blockend. It handles liveness and readiness checks out of the box:
+
+https://blockend.noorulhassan.com/docs/02-blocks/07-health-check
 
 ---
 
@@ -1107,20 +1111,4 @@ You will know **why** it exists.
 
 And that makes all the difference.
 
----
 
-## See Also
-
-If you found this helpful, here are some related topics worth exploring:
-
-- **Caching** — Why we store frequently accessed data closer to the application
-- **Database Replication** — How we use multiple database copies for read scalability
-- **Message Queues** — How we handle background work without blocking requests
-- **Consistent Hashing** — How we distribute data across servers without chaos
-- **CAP Theorem** — The fundamental tradeoff in distributed systems
-
-Each of these builds on the foundations we covered here.
-
-Take them one at a time. Introduce each concept only when your system actually needs it.
-
-That is the way.
